@@ -1,0 +1,22 @@
+{
+  "name": "aetheris-ingestion",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Ingestion layer for Aetheris",
+  "main": "publish.js",
+  "scripts": {
+    "publish": "node publish.js",
+    "node1": "node subscribe.js -- --node-name=EdgeNode1 --node-count=5",
+    "node2": "node subscribe.js -- --node-name=EdgeNode2 --node-count=5",
+    "node3": "node subscribe.js -- --node-name=EdgeNode3 --node-count=5",
+    "node4": "node subscribe.js -- --node-name=EdgeNode4 --node-count=5",
+    "node5": "node subscribe.js -- --node-name=EdgeNode5 --node-count=5",
+    "agent": "node multi-agent.js"
+  },
+  "dependencies": {
+    "csv-parser": "^3.0.0",
+    "dotenv": "^17.4.2",
+    "groq": "^5.21.0",
+    "mqtt": "^5.10.0"
+  }
+}

@@ -1,0 +1,15 @@
+# Python
+**/__pycache__/
+**/*.py[oc]
+**/.venv/
+**/.python-version
+
+# Node
+**/node_modules/
+
+# Env and secrets
+**/.env
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
