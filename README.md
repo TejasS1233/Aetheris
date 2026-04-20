@@ -26,6 +26,7 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
   - 2/3 consensus output to `aetheris/commands`
 - Added queue and decision metrics logging
 - Seeded Mongo transaction history (`49500` docs) for tool-based history lookup
+- Added Mongo decision persistence (`exceptions`, `commands`, `tool_audit`) and startup healthchecks
 
 ## Why this architecture
 
@@ -78,6 +79,11 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 - Added max-wait windows to accumulate small bursts before inference.
 - Result: far fewer LLM API calls than per-transaction inference.
 
+11. **Persistence and fail-fast operations**
+- Persisted incoming exceptions and outgoing commands to Mongo for traceability.
+- Added tool-call audit logging with TTL cleanup to avoid unbounded growth.
+- Added health checks (MQTT, Redis, Mongo) at startup to fail fast on broken dependencies.
+
 ## Real problems faced
 
 - **Stateful anomaly detection design**: global Z-score looked mathematically fine but behaviorally wrong; per-account baselines were required.
@@ -91,14 +97,24 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 - **Explainability vs speed**: richer multi-agent reasoning increases latency and operational cost.
 - **Data realism**: synthetic dataset distribution affects anomaly rates and threshold behavior.
 - **Operational coordination**: many moving pieces (EMQX, Redis, Mongo, Node services, Python service) increased runbook complexity.
+- **Persistence hygiene**: storing exceptions/commands/tool audits requires index and retention discipline.
 
-### Current batching values (and what we tried)
+### Current batching values
 
 - `IMMEDIATE_BATCH_SIZE`: `5` (current)
 - `BATCH_SIZE`: `10` (current)
 - `IMMEDIATE_BATCH_MAX_WAIT_MS`: `150` ms (current)
 - `BATCH_MAX_WAIT_MS`: `300` ms (current)
 - Earlier queue read block behavior before wait-window tuning: `1000` ms default read blocking.
+
+### Current persistence values (Mongo)
+
+- `MONGODB_TRANSACTIONS_COLLECTION=transactions`
+- `MONGODB_EXCEPTIONS_COLLECTION=exceptions`
+- `MONGODB_COMMANDS_COLLECTION=commands`
+- `MONGODB_TOOL_AUDIT_COLLECTION=tool_audit`
+- `MONGODB_AUDIT_TTL_DAYS=30`
+- `FAIL_FAST_HEALTHCHECK=true`
 
 ## Repo layout
 
@@ -123,9 +139,7 @@ Aetheris/
 ### 1) Start infrastructure
 
 ```bash
-docker run -d --name emqx -p 1883:1883 -p 18083:18083 emqx/emqx:5.7
-docker run -d --name redis -p 6379:6379 redis:7
-docker run -d --name mongo -p 27017:27017 mongo:7
+docker compose up -d
 ```
 
 ### 2) Start edge nodes
@@ -154,6 +168,12 @@ copy .env.example .env
 # BATCH_SIZE=10
 # IMMEDIATE_BATCH_MAX_WAIT_MS=150
 # BATCH_MAX_WAIT_MS=300
+# optional persistence knobs:
+# MONGODB_EXCEPTIONS_COLLECTION=exceptions
+# MONGODB_COMMANDS_COLLECTION=commands
+# MONGODB_TOOL_AUDIT_COLLECTION=tool_audit
+# MONGODB_AUDIT_TTL_DAYS=30
+# FAIL_FAST_HEALTHCHECK=true
 uv run python main.py
 ```
 
@@ -176,7 +196,7 @@ node publish.js
 - Throughput is improved by semantic batching, but LLM RPM limits can still dominate under sustained spikes.
 - LLM latency dominates throughput.
 - Orchestrator is single-process in current form.
-- Historical tooling assumes Mongo collection readiness.
+- Historical tooling and decision audit path assume Mongo collection readiness.
 
 ## Next upgrades
 

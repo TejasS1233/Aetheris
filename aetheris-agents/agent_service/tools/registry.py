@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Callable
 
@@ -20,6 +21,9 @@ class ToolRegistry:
     def __init__(self) -> None:
         self.redis = Redis.from_url(settings.redis_url, decode_responses=True)
         self.mongo = MongoClient(settings.mongodb_uri)[settings.mongodb_database]
+        self.transactions = self.mongo[settings.mongodb_transactions_collection]
+        self.tool_audit = self.mongo[settings.mongodb_tool_audit_collection]
+        self._init_indexes()
         self.tools: dict[str, Tool] = {
             "query_history": Tool(
                 name="query_history",
@@ -43,10 +47,19 @@ class ToolRegistry:
             ),
         }
 
+    def _init_indexes(self) -> None:
+        self.transactions.create_index("transactionId", unique=True)
+        self.transactions.create_index("accountOrigin")
+        self.tool_audit.create_index("transactionId")
+        self.tool_audit.create_index(
+            "createdAt",
+            expireAfterSeconds=max(settings.mongodb_audit_ttl_days, 1) * 86400,
+        )
+
     def query_history(self, args: dict) -> dict:
         account_id = str(args.get("accountId", ""))
         tx = list(
-            self.mongo["transactions"].find({"accountOrigin": account_id}, {"_id": 0}).limit(50)
+            self.transactions.find({"accountOrigin": account_id}, {"_id": 0}).limit(50)
         )
         return {"accountId": account_id, "count": len(tx), "transactions": tx[:5]}
 
@@ -75,7 +88,35 @@ class ToolRegistry:
         tool = self.tools.get(tool_name)
         if tool is None:
             return {"error": f"Unknown tool: {tool_name}"}
-        return tool.execute(args)
+
+        try:
+            output = tool.execute(args)
+            success = True
+        except Exception as exc:
+            output = {"error": str(exc)}
+            success = False
+
+        tx_id = args.get("transactionId")
+        if tx_id is None:
+            tx_id = args.get("txId")
+        if tx_id is None:
+            tx_id = args.get("transaction_id")
+
+        try:
+            audit_doc = {
+                "tool": tool_name,
+                "args": args,
+                "output": output,
+                "success": success,
+                "transactionId": tx_id,
+                "createdAt": datetime.now(timezone.utc),
+            }
+            self.tool_audit.insert_one(audit_doc)
+        except Exception:
+            # Do not fail tool execution path on audit write issues.
+            pass
+
+        return output
 
     def tool_descriptions(self) -> str:
         lines = []

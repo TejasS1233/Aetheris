@@ -18,7 +18,7 @@ def main() -> None:
 
     mongo = MongoClient(settings.mongodb_uri)
     db = mongo[settings.mongodb_database]
-    coll = db["transactions"]
+    coll = db[settings.mongodb_transactions_collection]
 
     coll.create_index("transactionId", unique=True)
 

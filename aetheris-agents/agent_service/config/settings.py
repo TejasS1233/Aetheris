@@ -29,6 +29,12 @@ class Settings:
     batch_max_wait_ms: int = int(os.getenv("BATCH_MAX_WAIT_MS", "300"))
     mongodb_uri: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     mongodb_database: str = os.getenv("MONGODB_DATABASE", "aetheris")
+    mongodb_transactions_collection: str = os.getenv("MONGODB_TRANSACTIONS_COLLECTION", "transactions")
+    mongodb_exceptions_collection: str = os.getenv("MONGODB_EXCEPTIONS_COLLECTION", "exceptions")
+    mongodb_commands_collection: str = os.getenv("MONGODB_COMMANDS_COLLECTION", "commands")
+    mongodb_tool_audit_collection: str = os.getenv("MONGODB_TOOL_AUDIT_COLLECTION", "tool_audit")
+    mongodb_audit_ttl_days: int = int(os.getenv("MONGODB_AUDIT_TTL_DAYS", "30"))
+    fail_fast_healthcheck: bool = os.getenv("FAIL_FAST_HEALTHCHECK", "true").lower() in {"1", "true", "yes"}
 
 
 settings = Settings()

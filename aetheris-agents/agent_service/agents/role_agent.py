@@ -86,9 +86,23 @@ class RoleAgent:
         tool_call_obj = self._safe_json(tool_response.content)
 
         tool_name = str(tool_call_obj.get("tool", "query_history"))
-        tool_args = tool_call_obj.get("args", {"accountId": event.account_origin, "amount": event.amount})
+        tool_args = tool_call_obj.get(
+            "args",
+            {
+                "accountId": event.account_origin,
+                "amount": event.amount,
+                "transactionId": event.transaction_id,
+            },
+        )
         if not isinstance(tool_args, dict):
-            tool_args = {"accountId": event.account_origin, "amount": event.amount}
+            tool_args = {
+                "accountId": event.account_origin,
+                "amount": event.amount,
+                "transactionId": event.transaction_id,
+            }
+
+        if "transactionId" not in tool_args:
+            tool_args["transactionId"] = event.transaction_id
 
         observation = self.registry.execute(tool_name, tool_args)
 

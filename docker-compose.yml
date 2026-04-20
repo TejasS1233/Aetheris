@@ -1,0 +1,27 @@
+services:
+  emqx:
+    image: emqx/emqx:5.7
+    container_name: emqx
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
