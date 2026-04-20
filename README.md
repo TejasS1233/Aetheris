@@ -134,6 +134,8 @@ Aetheris/
 - Buffer/state: Redis Streams
 - Historical context tool: MongoDB
 
+Note: Legacy Node-based agent prototypes were removed from `aetheris-ingestion` to keep the active integration path single-source through `aetheris-agents`.
+
 ## Run end-to-end
 
 ### 1) Start infrastructure
