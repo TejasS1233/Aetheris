@@ -41,23 +41,23 @@ class PriorityBuffer:
         self._ensure_group(settings.immediate_stream)
         self._ensure_group(settings.batch_stream)
 
-    def pop_immediate(self):
+    def pop_immediate(self, count: int = 1, block_ms: int = 1000):
         items = self.redis.xreadgroup(
             settings.consumer_group,
             settings.consumer_name,
             {settings.immediate_stream: ">"},
-            count=1,
-            block=1000,
+            count=count,
+            block=block_ms,
         )
         return self._flatten(items)
 
-    def pop_batch(self, count: int):
+    def pop_batch(self, count: int, block_ms: int = 1000):
         items = self.redis.xreadgroup(
             settings.consumer_group,
             settings.consumer_name,
             {settings.batch_stream: ">"},
             count=count,
-            block=1000,
+            block=block_ms,
         )
         return self._flatten(items)
 

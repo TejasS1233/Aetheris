@@ -19,10 +19,13 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 - Published only anomalies to `aetheris/exceptions`
 - Created a separate Python intelligence service (`aetheris-agents`) with:
   - Redis priority buffering (`immediate` vs `batch`)
+  - semantic batch inference (single LLM call per role per batch)
+  - short wait-window batching to collect micro-bursts
   - LangGraph orchestration
   - 3-agent vote (`Analyst`, `Auditor`, `Strategist`)
   - 2/3 consensus output to `aetheris/commands`
 - Added queue and decision metrics logging
+- Seeded Mongo transaction history (`49500` docs) for tool-based history lookup
 
 ## Why this architecture
 
@@ -70,6 +73,11 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 - Added periodic metrics to see queued vs processed and decision mix.
 - Reason: needed objective runtime visibility, not just logs.
 
+10. **True semantic batching**
+- Reworked agent flow so queues are drained in chunks and decisions are produced in batch.
+- Added max-wait windows to accumulate small bursts before inference.
+- Result: far fewer LLM API calls than per-transaction inference.
+
 ## Real problems faced
 
 - **Stateful anomaly detection design**: global Z-score looked mathematically fine but behaviorally wrong; per-account baselines were required.
@@ -78,10 +86,19 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 - **Backpressure and queue growth**: even with healthy processing, backlog still grows under sustained input.
 - **Priority policy tuning**: choosing suspicion threshold (`immediate` vs `batch`) changes cost/latency trade-offs.
 - **Node scaling trade-off**: more nodes improved parallelism only up to broker/network overhead limits.
-- **Batch semantics confusion**: increasing queue read size alone did not improve decision throughput; true semantic batching is still pending.
+- **Batch tuning complexity**: semantic batching works, but batch size and wait-window values still need workload-specific tuning.
+- **Burst handling trade-off**: short mini-spikes ("small bursts") can cause too many tiny LLM calls if wait windows are too low, or extra latency if wait windows are too high.
 - **Explainability vs speed**: richer multi-agent reasoning increases latency and operational cost.
 - **Data realism**: synthetic dataset distribution affects anomaly rates and threshold behavior.
 - **Operational coordination**: many moving pieces (EMQX, Redis, Mongo, Node services, Python service) increased runbook complexity.
+
+### Current batching values (and what we tried)
+
+- `IMMEDIATE_BATCH_SIZE`: `5` (current)
+- `BATCH_SIZE`: `10` (current)
+- `IMMEDIATE_BATCH_MAX_WAIT_MS`: `150` ms (current)
+- `BATCH_MAX_WAIT_MS`: `300` ms (current)
+- Earlier queue read block behavior before wait-window tuning: `1000` ms default read blocking.
 
 ## Repo layout
 
@@ -89,7 +106,6 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 Aetheris/
   data/                    # synthetic finance dataset (50k+ rows)
   SRS.md                   # requirements/spec notes
-  problemsfaced            # rough notes captured during build
   aetheris-ingestion/      # Node.js stream + edge detection
   aetheris-agents/         # Python uv LangGraph intelligence layer
 ```
@@ -133,6 +149,11 @@ From `aetheris-agents`:
 uv sync
 copy .env.example .env
 # set GROQ_API_KEY and GROQ_MODEL
+# optional throughput knobs:
+# IMMEDIATE_BATCH_SIZE=5
+# BATCH_SIZE=10
+# IMMEDIATE_BATCH_MAX_WAIT_MS=150
+# BATCH_MAX_WAIT_MS=300
 uv run python main.py
 ```
 
@@ -152,15 +173,15 @@ node publish.js
 
 ## Current limitations
 
-- Batch queue still processes item-by-item (not semantic grouped decisions yet).
+- Throughput is improved by semantic batching, but LLM RPM limits can still dominate under sustained spikes.
 - LLM latency dominates throughput.
 - Orchestrator is single-process in current form.
 - Historical tooling assumes Mongo collection readiness.
 
 ## Next upgrades
 
-1. Semantic batching (group by account + time window)
-2. Multiple Redis consumer workers
+1. Multiple Redis consumer workers
+2. Retry/backoff + dead-letter handling for 429/network failures
 3. Rule-based triage before LLM (top-risk-only escalation)
 4. Prometheus/Grafana instrumentation
 5. Rust/Wasm edge runtime migration path

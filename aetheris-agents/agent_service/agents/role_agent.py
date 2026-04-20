@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
@@ -43,6 +44,33 @@ class RoleAgent:
             f"Observation: {json.dumps(observation)}"
         )
 
+    def _batch_vote_prompt(self, events: list[ExceptionEvent]) -> str:
+        lines = []
+        for event in events:
+            lines.append(
+                "{"
+                f'"transactionId": {event.transaction_id}, '
+                f'"accountOrigin": "{event.account_origin}", '
+                f'"amount": {event.amount}, '
+                f'"zScore": {event.z_score}, '
+                f'"branch": {event.branch}, '
+                f'"type": {event.type}'
+                "}"
+            )
+        event_block = "\n".join(lines)
+        return (
+            f"You are {self.name}. Role: {self.role}.\n"
+            "You are processing a batch of exception events.\n"
+            "For EACH transactionId, decide APPROVE, REVIEW, or BLOCK.\n"
+            "Prefer REVIEW when uncertain.\n"
+            "Return ONLY JSON array in this exact shape:\n"
+            "["
+            "{\"transactionId\":123,\"decision\":\"APPROVE|REVIEW|BLOCK\",\"reason\":\"...\"}"
+            "]\n\n"
+            "Events:\n"
+            f"{event_block}"
+        )
+
     def _safe_json(self, text: str) -> dict:
         text = text.strip()
         if text.startswith("```"):
@@ -73,3 +101,40 @@ class RoleAgent:
         reason = str(vote_obj.get("reason", "Insufficient signal, defaulting to review."))
 
         return AgentVote(agent=self.name, decision=decision, reason=reason)
+
+    def vote_batch(self, events: list[ExceptionEvent]) -> dict[int, AgentVote]:
+        if not events:
+            return {}
+
+        response = self.llm.invoke(self._batch_vote_prompt(events))
+        obj = self._safe_json(response.content)
+
+        entries: Iterable[dict]
+        if isinstance(obj, list):
+            entries = [entry for entry in obj if isinstance(entry, dict)]
+        else:
+            entries = []
+
+        votes: dict[int, AgentVote] = {}
+        for entry in entries:
+            tx_id_raw = entry.get("transactionId")
+            try:
+                tx_id = int(tx_id_raw)
+            except (TypeError, ValueError):
+                continue
+
+            decision = str(entry.get("decision", "REVIEW")).upper()
+            if decision not in {"APPROVE", "REVIEW", "BLOCK"}:
+                decision = "REVIEW"
+            reason = str(entry.get("reason", "Batch vote defaulted to review."))
+            votes[tx_id] = AgentVote(agent=self.name, decision=decision, reason=reason)
+
+        for event in events:
+            if event.transaction_id not in votes:
+                votes[event.transaction_id] = AgentVote(
+                    agent=self.name,
+                    decision="REVIEW",
+                    reason="No batch vote output for transaction; defaulted to review.",
+                )
+
+        return votes

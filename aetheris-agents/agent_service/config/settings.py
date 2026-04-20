@@ -24,6 +24,9 @@ class Settings:
     consumer_name: str = os.getenv("REDIS_CONSUMER_NAME", "orchestrator-1")
     immediate_score_threshold: float = float(os.getenv("IMMEDIATE_SCORE_THRESHOLD", "0.9"))
     batch_size: int = int(os.getenv("BATCH_SIZE", "10"))
+    immediate_batch_size: int = int(os.getenv("IMMEDIATE_BATCH_SIZE", "5"))
+    immediate_batch_max_wait_ms: int = int(os.getenv("IMMEDIATE_BATCH_MAX_WAIT_MS", "150"))
+    batch_max_wait_ms: int = int(os.getenv("BATCH_MAX_WAIT_MS", "300"))
     mongodb_uri: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     mongodb_database: str = os.getenv("MONGODB_DATABASE", "aetheris")
 

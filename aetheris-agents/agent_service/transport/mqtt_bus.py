@@ -51,48 +51,75 @@ class MqttBus:
             print(f"[agents] Error ingesting MQTT message: {exc}")
 
     def _process_immediate(self) -> None:
-        items = self.buffer.pop_immediate()
-        for stream_name, message_id, event, suspicion in items:
-            try:
-                command = self.orchestrator.investigate(event)
-                self.client.publish(settings.commands_topic, command.model_dump_json())
-                self.buffer.ack(stream_name, message_id)
-                self.metrics.counters.processed_immediate += 1
-                if command.action == "BLOCK":
-                    self.metrics.counters.command_block += 1
-                elif command.action == "APPROVE":
-                    self.metrics.counters.command_approve += 1
-                else:
-                    self.metrics.counters.command_review += 1
-                print(
-                    f"[immediate] account={command.account_origin} tx={command.transaction_id} "
-                    f"action={command.action} score={suspicion:.3f}"
-                )
-            except Exception as exc:
-                self.metrics.counters.process_errors += 1
-                print(f"[agents] Error processing immediate item {message_id}: {exc}")
+        items = self.buffer.pop_immediate(
+            settings.immediate_batch_size,
+            settings.immediate_batch_max_wait_ms,
+        )
+        if not items:
+            return
+
+        events = [event for _, _, event, _ in items]
+        by_tx = {event.transaction_id: (stream_name, message_id, suspicion) for stream_name, message_id, event, suspicion in items}
+
+        try:
+            commands = self.orchestrator.investigate_batch(events)
+        except Exception as exc:
+            self.metrics.counters.process_errors += len(items)
+            print(f"[agents] Error processing immediate batch (size={len(items)}): {exc}")
+            return
+
+        for command in commands:
+            stream_name, message_id, suspicion = by_tx.get(command.transaction_id, (None, None, 0.0))
+            if stream_name is None or message_id is None:
+                continue
+
+            self.client.publish(settings.commands_topic, command.model_dump_json())
+            self.buffer.ack(stream_name, message_id)
+            self.metrics.counters.processed_immediate += 1
+            if command.action == "BLOCK":
+                self.metrics.counters.command_block += 1
+            elif command.action == "APPROVE":
+                self.metrics.counters.command_approve += 1
+            else:
+                self.metrics.counters.command_review += 1
+            print(
+                f"[immediate] account={command.account_origin} tx={command.transaction_id} "
+                f"action={command.action} score={suspicion:.3f}"
+            )
 
     def _process_batch(self) -> None:
-        items = self.buffer.pop_batch(settings.batch_size)
-        for stream_name, message_id, event, suspicion in items:
-            try:
-                command = self.orchestrator.investigate(event)
-                self.client.publish(settings.commands_topic, command.model_dump_json())
-                self.buffer.ack(stream_name, message_id)
-                self.metrics.counters.processed_batch += 1
-                if command.action == "BLOCK":
-                    self.metrics.counters.command_block += 1
-                elif command.action == "APPROVE":
-                    self.metrics.counters.command_approve += 1
-                else:
-                    self.metrics.counters.command_review += 1
-                print(
-                    f"[batch] account={command.account_origin} tx={command.transaction_id} "
-                    f"action={command.action} score={suspicion:.3f}"
-                )
-            except Exception as exc:
-                self.metrics.counters.process_errors += 1
-                print(f"[agents] Error processing batch item {message_id}: {exc}")
+        items = self.buffer.pop_batch(settings.batch_size, settings.batch_max_wait_ms)
+        if not items:
+            return
+
+        events = [event for _, _, event, _ in items]
+        by_tx = {event.transaction_id: (stream_name, message_id, suspicion) for stream_name, message_id, event, suspicion in items}
+
+        try:
+            commands = self.orchestrator.investigate_batch(events)
+        except Exception as exc:
+            self.metrics.counters.process_errors += len(items)
+            print(f"[agents] Error processing batch queue (size={len(items)}): {exc}")
+            return
+
+        for command in commands:
+            stream_name, message_id, suspicion = by_tx.get(command.transaction_id, (None, None, 0.0))
+            if stream_name is None or message_id is None:
+                continue
+
+            self.client.publish(settings.commands_topic, command.model_dump_json())
+            self.buffer.ack(stream_name, message_id)
+            self.metrics.counters.processed_batch += 1
+            if command.action == "BLOCK":
+                self.metrics.counters.command_block += 1
+            elif command.action == "APPROVE":
+                self.metrics.counters.command_approve += 1
+            else:
+                self.metrics.counters.command_review += 1
+            print(
+                f"[batch] account={command.account_origin} tx={command.transaction_id} "
+                f"action={command.action} score={suspicion:.3f}"
+            )
 
     def _drain_loop(self) -> None:
         while True:

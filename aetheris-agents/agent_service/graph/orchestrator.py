@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -81,3 +82,48 @@ class Orchestrator:
             reason=final["reason"],
             timestamp=event.timestamp,
         )
+
+    def investigate_batch(self, events: list[ExceptionEvent]) -> list[CommandEvent]:
+        if not events:
+            return []
+
+        analyst_votes = self.analyst.vote_batch(events)
+        auditor_votes = self.auditor.vote_batch(events)
+        strategist_votes = self.strategist.vote_batch(events)
+
+        commands: list[CommandEvent] = []
+        now = int(time.time() * 1000)
+
+        for event in events:
+            votes = [
+                analyst_votes[event.transaction_id],
+                auditor_votes[event.transaction_id],
+                strategist_votes[event.transaction_id],
+            ]
+
+            block_count = len([v for v in votes if v.decision == "BLOCK"])
+            approve_count = len([v for v in votes if v.decision == "APPROVE"])
+
+            if block_count >= 2:
+                action = "BLOCK"
+                reason = "2/3 consensus reached for BLOCK"
+                self.registry.execute("kill_switch", {"accountId": event.account_origin})
+            elif approve_count >= 2:
+                action = "APPROVE"
+                reason = "2/3 consensus reached for APPROVE"
+            else:
+                action = "REVIEW"
+                reason = "No majority; escalated for review"
+
+            commands.append(
+                CommandEvent(
+                    account_origin=event.account_origin,
+                    transaction_id=event.transaction_id,
+                    action=action,
+                    votes=votes,
+                    reason=reason,
+                    timestamp=now,
+                )
+            )
+
+        return commands
