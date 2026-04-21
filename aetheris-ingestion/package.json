@@ -10,7 +10,13 @@
     "node2": "node subscribe.js -- --node-name=EdgeNode2 --node-count=5",
     "node3": "node subscribe.js -- --node-name=EdgeNode3 --node-count=5",
     "node4": "node subscribe.js -- --node-name=EdgeNode4 --node-count=5",
-    "node5": "node subscribe.js -- --node-name=EdgeNode5 --node-count=5"
+    "node5": "node subscribe.js -- --node-name=EdgeNode5 --node-count=5",
+    "wasm:build": "cargo build --release --target wasm32-unknown-unknown --manifest-path ../aetheris-edge-wasm/Cargo.toml",
+    "wasm:node1": "node subscribe-wasm.js -- --node-name=EdgeNode1 --node-count=5",
+    "wasm:node2": "node subscribe-wasm.js -- --node-name=EdgeNode2 --node-count=5",
+    "wasm:node3": "node subscribe-wasm.js -- --node-name=EdgeNode3 --node-count=5",
+    "wasm:node4": "node subscribe-wasm.js -- --node-name=EdgeNode4 --node-count=5",
+    "wasm:node5": "node subscribe-wasm.js -- --node-name=EdgeNode5 --node-count=5"
   },
   "dependencies": {
     "csv-parser": "^3.0.0",

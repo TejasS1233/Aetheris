@@ -16,6 +16,7 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
   - per-account rolling window (`100` points)
   - Z-score anomaly detection
   - deterministic account-to-node routing
+- Added a Rust+Wasm edge scoring option (`aetheris-edge-wasm` + `aetheris-ingestion/subscribe-wasm.js`)
 - Published only anomalies to `aetheris/exceptions`
 - Created a separate Python intelligence service (`aetheris-agents`) with:
   - Redis priority buffering (`immediate` vs `batch`)
@@ -122,6 +123,7 @@ The project began as a single subscriber demo and evolved into a multi-stage sys
 Aetheris/
   data/                    # synthetic finance dataset (50k+ rows)
   SRS.md                   # requirements/spec notes
+  aetheris-edge-wasm/      # Rust edge scoring module compiled to Wasm
   aetheris-ingestion/      # Node.js stream + edge detection
   aetheris-agents/         # Python uv LangGraph intelligence layer
 ```
@@ -129,10 +131,16 @@ Aetheris/
 ## Tech stack
 
 - Edge/Ingestion: Node.js, MQTT.js, csv-parser
+- Edge compute option: Rust -> WebAssembly (`wasm32-unknown-unknown`)
 - Broker: EMQX
 - Intelligence: Python 3.11, uv, LangGraph, langchain-groq
 - Buffer/state: Redis Streams
 - Historical context tool: MongoDB
+
+Why Wasm:
+- It moves the hottest edge math path (Z-score scoring) to compiled Rust for lower CPU overhead.
+- It keeps the existing Node MQTT pipeline intact, so migration is incremental and low-risk.
+- It gives deterministic compute behavior across runtimes while preserving current topic contracts.
 
 Note: Legacy Node-based agent prototypes were removed from `aetheris-ingestion` to keep the active integration path single-source through `aetheris-agents`.
 
@@ -155,6 +163,24 @@ node subscribe.js -- --node-name=EdgeNode2 --node-count=5
 node subscribe.js -- --node-name=EdgeNode3 --node-count=5
 node subscribe.js -- --node-name=EdgeNode4 --node-count=5
 node subscribe.js -- --node-name=EdgeNode5 --node-count=5
+```
+
+### 2b) (Optional) Start Rust+Wasm edge nodes
+
+Build Wasm first (from `aetheris-ingestion`):
+
+```bash
+npm run wasm:build
+```
+
+Then run Wasm-backed nodes:
+
+```bash
+npm run wasm:node1
+npm run wasm:node2
+npm run wasm:node3
+npm run wasm:node4
+npm run wasm:node5
 ```
 
 ### 3) Start intelligence service
