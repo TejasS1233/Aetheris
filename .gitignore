@@ -7,6 +7,10 @@
 # Node
 **/node_modules/
 
+# Rust
+aetheris-edge-wasm/target/
+aetheris-edge-wasm/Cargo.lock
+
 # Env and secrets
 **/.env
 
